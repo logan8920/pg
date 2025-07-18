@@ -8,6 +8,8 @@ Route::prefix('v1')->middleware('validate-ip')->group(function(){
     Route::post('/generate-url', [PgtxnController::class, 'index']);
 
     Route::post('/pg-redirect', [PgtxnController::class, 'initiateTransaction'])->name('pg.redirect');
+
+    Route::post('/txn-status', [PgtxnController::class, 'txnStatus'])->name('txn.status');
     
 });
 
@@ -29,3 +31,5 @@ Route::post('/client-return-url', function () {
     // Validate signature
     dd(request()->all());
 })->name('client.return.url');
+
+Route::get('/update-ini-transaction',[PgtxnController::class, 'updateIniTransaction']);

@@ -7,7 +7,7 @@ use App\Libraries\PaymentBankit;
 use App\Models\{PgCompany, Mode, ApiPartnerModeCompany, User, Pgtxn};
 use App\Traits\CommanTrait;
 use Log;
-use Ramsey\Uuid\Type\Decimal;
+use DB;
 
 class Pay10Service
 {
@@ -54,7 +54,7 @@ class Pay10Service
 
 
             if (!$withinLimit)
-                return redirect()->route('pg-transaction.failure')->with("error", "Transaction Limit Exceeded, Please Contant to Vendor!");
+                throw new Exception("Transaction Limit Exceeded, Please Contant to Vendor!", 20);
 
             $posturl = 'https://preprod.pay10.com/pgui/jsp/paymentrequest';
             //$posturl = 'https://uatpg.pay10.ae/pgui/jsp/paymentrequest';
@@ -80,10 +80,10 @@ class Pay10Service
             $gatway = PgCompany::whereName($paymentGateway->name)->first();
 
             if (!$gatway)
-                throw new Exception("Invalid Payment Gateway!", 1);
-
-            $payid = $gatway->pg_config['payid'];
-            $salt = $gatway->pg_config['salt'];
+                throw new Exception("Invalid Payment Gateway!", 21);
+            
+            $payid = $gatway->apiPgCred()->whereUserId($user->id)->first()?->pg_credentials['payid'];
+            $salt = $gatway->apiPgCred()->whereUserId($user->id)->first()?->pg_credentials['salt'];
 
             // $payid = '5011767734260001';
             // $salt = 'f05666e27b65421d';
@@ -113,14 +113,15 @@ class Pay10Service
                 "HASH" => $hash
             ];
 
+            $transaction->tQuery->update(["pg_request" => $formFields]);
+
             return compact('posturl', 'finaldata', 'formFields');
 
         } catch (Exception $e) {
-            //throw new Exception($e->getMessage(), $e->getCode());
-            return redirect()->route(route: 'pg-transaction.failure')->with("error", $e->getMessage());
+            throw new Exception($e->getMessage(), $e->getCode());
+
         } catch (\Throwable $e) {
-            return redirect()->route(route: 'pg-transaction.failure')->with("error", $e->getMessage());
-            //throw new Exception($e->getMessage(), $e->getCode());
+            throw new Exception($e->getMessage(), $e->getCode());
         }
     }
 
@@ -128,13 +129,13 @@ class Pay10Service
     {
         $request = request();
         $provider = "Pay10";
-
+        $txninfo = false;
         try {
 
             $gatway = PgCompany::whereName($provider)->first();
 
             if (!$gatway)
-                throw new Exception("Invalid Payment Gateway!", 1);
+                throw new Exception("Invalid Payment Gateway", 21);
 
 
             $return = $request->post();
@@ -142,7 +143,7 @@ class Pay10Service
             Log::channel($gatway)->info('RESPONSE-REDIRECT-' . $request->ip(), $return);
 
             if (empty($return['ENCDATA'] ?? ''))
-                throw new Exception("Unable to get response for Payment gateway", 9);
+                throw new Exception("Unable to get response for Payment gateway", 22);
 
 
             $encryptionKey = $gatway->pg_config['key'];
@@ -158,7 +159,7 @@ class Pay10Service
             $data = [];
 
             if (!empty($return) && $return['STATUS'] == 'Captured') {
-
+                
                 //$cardDetails = json_decode($return['DEMO_FINAL_REQUEST'], true);
 
                 $mode = $return['PAYMENT_TYPE'] ?? 'other';
@@ -180,7 +181,9 @@ class Pay10Service
                 if ($txninfo) {
 
                     $txninfo->update([
-                        'mode_pg' => "{$txninfo?->mode?->name}_{$gatway?->name}"
+                        'mode_pg' => "{$txninfo?->mode?->name}_{$gatway?->name}",
+                        'amount'  => $data['amount'],
+                        'status'  => 1
                     ]);
 
                     $getpgComm = ApiPartnerModeCompany::where(
@@ -194,8 +197,7 @@ class Pay10Service
                     $charges = $getpgComm?->charges;
 
                     if (!$charges)
-                        throw new Exception("Charges Not Updated!", 1);
-
+                        throw new Exception("Charges Not Updated!", 27);
 
                     $amts = $this->calculateCharge($data['amount'], $charges);
 
@@ -204,11 +206,13 @@ class Pay10Service
                     $walletTopUp = round($amtAfterDudection, 2);
                     $data['message'] = "Wallet Topup Successful with amount : $walletTopUp";
 
+                    DB::beginTransaction();
+
                     $requestData = [
                         'txnno' => $data['id'],
                         'order_id' => $data['orderid'],
                         'refid' => $txninfo->refid,
-                        'transfertype' => $gatway->name,
+                        'transfertype' => 'Credit',
                         'remarks' => $data['message'],
                         'comment' => $data['message'],
                         'user_id' => $txninfo->user_id,
@@ -226,7 +230,7 @@ class Pay10Service
                         'dateupdated' => date('Y-m-d H:i:s'),
                     ];
 
-                    if ($txninfo->status == 2 && $return['STATUS'] == 'Captured') {
+                    if ($txninfo->status == 1 && $return['STATUS'] == 'Captured') {
                         $data['status'] = 'Success';
                         $txnData = [
                             'txnno' => $data['id'],
@@ -240,7 +244,7 @@ class Pay10Service
                             'amt_after_deduction' => $amtAfterDudection,
                             'gst' => $amts['gst_amount'],
                             'dateupdated' => date('Y-m-d H:i:s'),
-                            'status' => 1
+                            //'status' => 1
                         ];
 
 
@@ -271,28 +275,35 @@ class Pay10Service
                     'status' => 0,
                     'txnno' => $return['ORDER_ID'],
                     'errormsg' => $return['PG_TXN_MESSAGE'],
-                    'dateupdated' => now()
+                    'dateupdated' => now("Asia/Kolkata")
                 ]);
 
                 $data = [
-                    'id' => $txninfo?->id,
+                    'id' => $txninfo?->txnno,
                     'amount' => $txninfo->amount,
                     'orderid' => $txninfo->id,
                     'banktxnid' => $txninfo->utr,
                     'errormsg' => $txninfo->errormsg,
-                    "{$gatway}_order_id" => $txninfo->utr,
+                    "{$gatway?->name}_order_id" => $txninfo->utr,
                     'paymentmode' => $txninfo->mode->name,
-                    'msg' => 'Payment Failed.',
+                    'msg' => $txninfo?->errormsg,
                     'status' => 'Failed',
                 ];
             } else {
-                $data['msg'] = "Invalid {$gatway} signature.";
+                $data['msg'] = "Invalid {$gatway?->name} signature.";
             }
 
-            return base64_encode(UserService::encrypt(http_build_query($data)));
+            if ($txninfo) {
+                $txninfo->tQuery->update(['pg_response' => is_array($return) ? $return : []]);
+            }
+            
+            $response = UserService::encrypt(http_build_query($data));
+            DB::commit();
+            return base64_encode($response);
             //return redirect(url('gateway-pg-receipt?resdata=' . $resData));
         } catch (Exception $e) {
-            throw new Exception($e->getMessage(),9);
+            DB::rollBack();
+            throw new Exception($e->getMessage(), $e->getCode());
         }
     }
 }

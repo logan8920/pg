@@ -14,7 +14,7 @@ class UserService
 
         $encrypted = openssl_encrypt(json_encode($data), $method, $key, 0, $iv);
         if ($encrypted === false) {
-            throw new \Exception("Encryption failed");
+            throw new \Exception("Encryption failed",26);
         }
 
         return base64_encode($iv . $encrypted);
@@ -29,7 +29,7 @@ class UserService
         $ivLength = openssl_cipher_iv_length($method);
 
         if (strlen($decoded) < $ivLength) {
-            throw new \Exception("Invalid encrypted data");
+            throw new \Exception("Invalid encrypted data",23);
         }
 
         $iv = substr($decoded, 0, $ivLength);
@@ -37,7 +37,7 @@ class UserService
 
         $decrypted = openssl_decrypt($encrypted, $method, $key, 0, $iv);
         if ($decrypted === false) {
-            throw new \Exception("Decryption failed");
+            throw new \Exception("Decryption failed",24);
         }
 
         return $decrypted;

@@ -55,13 +55,28 @@
         .export-to button {
             font-weight: 700;
         }
+
+        .table th,
+        .table td {
+            vertical-align: middle;
+        }
+
+        .bank-header {
+            background-color: #f26522;
+            color: white;
+            padding: 20px;
+        }
+
+        .bank-header h4 {
+            margin: 0;
+        }
     </style>
 @endsection
 @section('content')
     <!-- Begin Page Content -->
     <div class="container-fluid">
 
-        <x-pageheading :heading="'Api Partner Transaction List'" :navigation="['Api Partner Transaction', 'List']" :description="$description ?? null" />
+        <x-pageheading :heading="'Api Partner Ledger'" :navigation="['Api Partner', 'Ledger']" :description="$description ?? null" />
         <!-- Filters -->
         <div class="card shadow mb-2">
             <div class="card-header d-flex float-right justify-content-between py-3 w-100">
@@ -73,7 +88,7 @@
             <div class="card-body">
                 <form action='' method='get' id='filterform'>
                     <div class='row'>
-                        <div class='col-12 col-lg-2'>
+                        <div class='col-12 col-lg-3'>
                             <div class=" form-group">
                                 <label>
                                     <i class="fas fa-calendar-alt mr-2"></i>
@@ -108,7 +123,7 @@
                                     placeholder="Enter Transaction No...">
                             </div>
                         </div>
-                        <div class='col-12 col-lg-2'>
+                        <div class='col-12 col-lg-3'>
                             <div class=" form-group">
                                 <label for="reference_no">
                                     <i class="fas fa-vote-yea mr-2"></i>
@@ -118,7 +133,7 @@
                                     placeholder="Enter Reference No...">
                             </div>
                         </div>
-                        <div class='col-12 col-lg-2'>
+                        <div class='col-12 col-lg-2 d-none'>
                             <div class=" form-group">
                                 <label for="status">
                                     <i class="fas fa-clock mr-2"></i>
@@ -157,26 +172,33 @@
                 </h6>
             </div> --}}
             <div class="card-body">
+                @if (auth()->user()->api_partner)
+                    <div class="bank-header mb-4 rounded">
+                        <h4>{{ auth()->user()->username }} - Ledger</h4>
+                        <p class="mb-0">Customer Name: <strong>{{ ucwords(auth()->user()->name) }}</strong> | A/C No:
+                            <strong>{{ auth()->user()->username }}</strong>
+                        </p>
+                    </div>
+
+                    <!-- Account Summary -->
+                    <div class="mb-4">
+                        <p id="statmentPeriod"><strong>Statement Period:</strong> {{ date('d-M-Y', strtotime($startDate)) }} to
+                            {{ date('d-M-Y', strtotime($endDate)) }} </p>
+                        {{-- <p><strong>Opening Balance:</strong> ₹10,000.00</p> --}}
+                    </div>
+                @endif
                 <div class="table-responsive">
-                    <table class="table table-bordered text-center nowrap" id="dataTable" width="100%" cellspacing="0">
+                    <table class="table table-bordered text-center nowrap table-striped" id="dataTable" width="100%"
+                        cellspacing="0">
                         <thead>
                             <tr>
-                                <th>S.No.</th>
-                                <th>Username</th>
-                                <th>Txn No</th>
-                                <th>Ref. No</th>
-                                <th>Charge</th>
-                                <th>Amount</th>
-                                <th>Gst</th>
-                                <th>Mobile</th>
-                                <th>Email</th>
-                                <th>Status</th>
-                                <th>Mode PG</th>
-                                <th>Remarks</th>
+                                <th class="d-none">S.No.</th>
                                 <th>Date</th>
-                                @canany(['api-partner-query', 'api-partner-refund'])
-                                    <th>Action</th>
-                                @endcanany
+                                <th>Particulars</th>
+                                <th>Transaction No.</th>
+                                <th class="text-right">Debit (₹)</th>
+                                <th class="text-right">Credit (₹)</th>
+                                <th class="text-right">Balance (₹)</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -184,8 +206,8 @@
                 </div>
             </div>
         </div>
-
     </div>
+
     <!-- Modal -->
     <div class="modal" id="queryModal" tabindex="-1" role="dialog" aria-labelledby="queryModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-scrollable modal-xl" style="height: 100vh;" role="document">
@@ -212,146 +234,81 @@
     <script>
         // Data Table Config
         let tableData = {};
+        @if (auth()->user()->api_partner)
+        const statmentPeriod = document.querySelector("#statmentPeriod");
+        @endif
         let buttons, status, reference_no, transaction_no, partner_id, maxDate, minDate, startdate, enddate;
         let cols = [{
                 data: "s_no"
             },
             {
-                data: "user.username"
-            },
-            {
-                data: "txnno"
-            },
-            {
-                data: "refid"
-            },
-            {
-                data: "charge"
-            },
-            {
-                data: "amt_after_deduction"
-            },
-            {
-                data: "gst"
-            },
-            {
-                data: "mobile"
-            },
-            {
-                data: "status"
-            },
-            {
-                data: "email"
-            },
-            {
-                data: "mode_pg"
+                data: "created_at"
             },
             {
                 data: "remarks"
             },
             {
-                data: "dateadded"
+                data: "txnno"
             },
-            @canany(['api-partner-query', 'api-partner-refund'])
-                {
-                    data: "dateadded"
-                }
-            @endcanany
+            {
+                data: "debit"
+            },
+            {
+                data: "credit"
+            },
+            {
+                data: "balance"
+            }
         ];
 
         let colDefs = [{
                 targets: 0,
-                orderable: !1,
+                orderable: 1,
+                className: 'd-none',
                 searchable: !1,
                 render: function(e, t, a, s) {
                     return (a.s_no) + '.';
                 }
             },
             {
-                targets: 4,
+                targets: 1,
                 render: function(e, t, a, s) {
                     tableData[a.id] = a;
-                    return a?.charge ? `₹ ${a.charge}` : '-';
+                    return a?.created_at.toConvertDatetime('d-M-Y')
+                }
+            },
+            {
+                targets: 2,
+                className: "text-left",
+                orderable: !1,
+                render: function(e, t, a, s) {
+                    console.log(e, t, a, s);
+                    return a.transfertype == 'Credit' ?
+                        `<strong>${a.remarks}</strong><br><em><small>Mode Charges - ${a.charges ? formatINR(a.charges) : '0.00'} | 18% Gst of ${a.amount ? formatINR(a.amount) : '0.00'} - ${a.gst ? formatINR(a.gst) : '0.00'} <br> Partner Reference No. - ${a.refid} </small><em>` :
+                        `<strong>${a.remarks}</strong><br><em><small>Refund againt Transaction No - ${a?.refund_detail?.txnno} <br> Partner Reference No. - ${a.refid} </small><em>`;
+                }
+            },
+            {
+                targets: 4,
+                orderable: !1,
+                render: function(e, t, a, s) {
+                    return a?.debit ? `${formatINR(a.debit)}` : '-';
                 }
             },
             {
                 targets: 5,
+                orderable: !1,
                 render: function(e, t, a, s) {
-                    return a?.amt_after_deduction ? `₹ ${a.amt_after_deduction}` : `₹ ${a.amount}`;
+                    return a?.credit ? `${formatINR(a.credit)}` : '-';
                 }
             },
             {
                 targets: 6,
+                orderable: !1,
                 render: function(e, t, a, s) {
-                    return a?.gst ? `₹ ${a.gst}` : '-';
+                    return a?.balance ? `${formatINR(a.balance)}` : '-';
                 }
-            },
-            {
-                targets: 7,
-                render: function(e, t, a, s) {
-                    return a?.mobile ? `+91 ${a.mobile}` : '-';
-                }
-            },
-            {
-                targets: 8,
-                render: function(e, t, a, s) {
-                    let $aHref = $('<a>').addClass('w-50').attr('title', a.email).attr("href", `mailto:${a.email}`)
-                        .attr(
-                            "data-bs-toggle", "tooltip").text(a.email.limitCharacter(15));
-                    return $aHref[0].outerHTML;
-                }
-            },
-            {
-                targets: 9,
-                render: function(e, t, a, s) {
-                    let StatusArray = {
-                        "0": `<h6><span class="badge badge-danger">Failed <i class="fas fa-exclamation-triangle"></span></h6>`,
-                        "1": `<h6><span class="badge badge-success">Success <i class="fas fa-check-circle"></span></h6>`,
-                        "2": `<h6><span class="badge badge-warning">Initiated  <i class="fas fa-star-of-david"></span></h6>`,
-                        "3": `<h6><span class="badge badge-primary">Completed <i class="fas fa-check-double"></span></h6>`,
-                        "4": `<h6><span class="badge badge-info">Refunded <i class="fas fa-reply-all"></span></h6>`,
-                    };
-                    return StatusArray[`${a.status}`];
-                }
-            },
-            {
-                targets: 11,
-                render: function(e, t, a, s) {
-                    return a.status == 0 ? a.errormsg : (a.status == 4 ? a.refund_remarks : a.remarks);
-                }
-            },
-            {
-                targets: 12,
-                render: function(e, t, a, s) {
-                    return a.dateadded ? a.dateadded.toConvertDatetime('d M, Y') : '-';
-                }
-            },
-            @canany(['api-partner-query', 'api-partner-refund'])
-                {
-                    targets: -1,
-                    title: "Actions",
-                    orderable: !1,
-                    searchable: !1,
-                    render: function(e, t, a, s) {
-
-                        return `<div style="white-space: nowrap;" class="main-edit-btn text-center">
-                                @can('api-partner-query')
-                                 <a href="javascript:;" data-id="${a.id}" data-bs-toggle="tooltip" title="Query" class="btn btn-primary query-modal">
-                                    <i class="fas fa-comments mr-1"></i>
-                                    Query
-                                </a>
-                                @endcan
-                                @can('api-partner-refund')
-                                ${a.status === 3 || a.status === 1 ? 
-                                ` <a href="{{ route('api-partner.refund') }}" data-bs-toggle="tooltip" data-id="${a.id}" data-txnid="${a.txnid}" title="Refund" class="btn btn-success">
-                                            <i class="fas fa-reply-all mr-1"></i>
-                                            Refund
-                                        </a>` : ''}
-                                @endcan
-                           </div>`;
-                    },
-                },
-            @endcanany
+            }
         ];
 
         const configuration = {
@@ -365,7 +322,6 @@
                     d.partner_id = partner_id;
                     d.transaction_no = transaction_no;
                     d.reference_no = reference_no;
-                    d.status = status;
                 }
             },
             columns: cols || [],
@@ -449,8 +405,8 @@
                     '<i class="fas fa-file-excel mr-2"></i>');
 
             //Date Range Code
-            startdate = '{{ date('d-m-Y') }}';
-            enddate = '{{ date('d-m-Y') }}';
+            startdate = '{{ $startDate }}';
+            enddate = '{{ $endDate }}';
             $('#daterange').daterangepicker({
                     locale: {
                         format: 'DD/MM/YYYY'
@@ -466,10 +422,11 @@
                             'month').endOf(
                             'month')]
                     },
-                    startDate: startdate == '' ? startdate : moment(),
-                    endDate: enddate == '' ? enddate : moment()
+                    startDate: startdate !== '' ? startdate : moment(),
+                    endDate: enddate !== '' ? enddate : moment()
                 },
                 function(start, end) {
+
                     $('#daterange').val(start.format('DD/MM/YYYY') + ' - ' + end.format('DD/MM/YYYY'));
                     $('#hiddenRange').val(`${start.format('YYYY/MM/DD')}-${end.format('YYYY/MM/DD')}`).trigger(
                         'change');
@@ -488,6 +445,9 @@
                     (min !== null || max !== null) &&
                     ((new Date(min)) <= (new Date(max)))
                 ) {
+                    @if (auth()->user()->api_partner)
+                    statmentPeriod.innerHTML = `<strong>Statement Period:</strong> ${minDate.toConvertDatetime('d-M-Y')} to ${maxDate.toConvertDatetime('d-M-Y')}`;
+                    @endif
                     table.draw();
                 }
             });
@@ -499,10 +459,10 @@
             });
 
             //status filter
-            $("#status").on("change", function(e) {
-                status = this.value.trim();
-                table.ajax.reload();
-            });
+            // $("#status").on("change", function(e) {
+            //     status = this.value.trim();
+            //     table.ajax.reload();
+            // });
 
             //transaction_no and reference_no filter
             let typingTimer;
@@ -648,10 +608,12 @@
 
                     const $div1 = $('<div>').append($('<h3>')).append($('<pre>')).addClass('py-5 px-5');
                     $div1.find('h3').text('Pg Request');
-                    $div1.find('pre').text(res.data.pg_request ? JSON.stringify(res.data.pg_request ?? {},null, 2) : '-');
+                    $div1.find('pre').text(res.data.pg_request ? JSON.stringify(res.data.pg_request ??
+                        {}, null, 2) : '-');
                     const $div2 = $('<div>').append($('<h3>')).append($('<pre>')).addClass('py-5 px-5');
                     $div2.find('h3').text('Pg Response');
-                    $div2.find('pre').text(res.data.pg_response ? JSON.stringify(res.data.pg_response ?? {},null, 2) : '-')
+                    $div2.find('pre').text(res.data.pg_response ? JSON.stringify(res.data.pg_response ??
+                    {}, null, 2) : '-')
                     $model.find('.modal-body').append($div1[0]);
                     $model.find('.modal-body').append($('<hr>'));
                     $model.find('.modal-body').append($div2[0]);
@@ -670,6 +632,9 @@
 
         //reset filter
         function resetFilter(e) {
+            @if (auth()->user()->api_partner)
+            statmentPeriod.innerHTML = `<strong>Statement Period:</strong> ${startdate.toConvertDatetime('d-M-Y')} to ${enddate.toConvertDatetime('d-M-Y')}`;
+            @endif
             e.preventDefault();
             const form = e.target.closest('form');
             form && form.reset();

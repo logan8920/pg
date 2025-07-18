@@ -27,4 +27,12 @@ class PaymentTransaction extends Model
         "utr",
         "dateupdate"
     ];
+
+    public function user() {
+        return $this->hasOne(User::class, 'id', 'user_id');
+    }
+
+    public function refundDetail() {
+        return $this->hasOne(Pgtxn::class, "refundtxnid", "id");
+    }
 }

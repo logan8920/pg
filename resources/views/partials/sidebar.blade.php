@@ -56,6 +56,12 @@
                             <span>Api Partner Transaction</span>
                         </a>
                     @endcan
+                    @can('api-partner-ledger')
+                        <a class="collapse-item" href="{{ route('api-partner.ledger') }}">
+                            <i class="fas fa-fw fa-users-cog"></i>
+                            <span>Api Partner Ledger</span>
+                        </a>
+                    @endcan
                 </div>
             </div>
         </li>

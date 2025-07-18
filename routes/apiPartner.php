@@ -20,7 +20,12 @@ Route::middleware(['XSS','auth'])->prefix('api-partner')->group(function () {
     Route::get('/set-config/{user}',[ApiPartnerController::class, 'setConfig'])->name('api-partner-config')->middleware('can:api-partner-config');
     Route::post('/set-config/{user}',[ApiPartnerController::class, 'ConfigUpdate'])->name('api-partner-config.post')->middleware('can:api-partner-config');
     Route::get('transaction/list',[ApiPartnerController::class, 'transactionList'])->name('api-partner.transaction')->middleware('can:api-partner-transaction');
-    Route::post('/transactions',[ApiPartnerController::class, 'transactionsAjax'])->name('api-partner.transactions.ajax')->middleware(middleware: 'can:api-partner-show');
-    
+    Route::post('/transactions',[ApiPartnerController::class, 'transactionsAjax'])->name('api-partner.transactions.ajax')->middleware(middleware: 'can:api-partner-transaction');
+    Route::post('/transactions/refund',[ApiPartnerController::class, 'initiateRefund'])->name('api-partner.refund')->middleware(middleware: 'can:api-partner-refund');
+    Route::post('/transactions/query',[ApiPartnerController::class, 'getQuery'])->name('api-partner.query')->middleware(middleware: 'can:api-partner-query');
+    Route::get('/transactions/ledger',[ApiPartnerController::class, 'ledger'])->name('api-partner.ledger')->middleware(middleware: 'can:api-partner-ledger');
 
+    Route::post('/transaction/ledger/get',[ApiPartnerController::class, 'ledgerAjax'])->name('api-partner.ledger.ajax')->middleware(middleware: 'can:api-partner-transaction');
+
+    Route::post('/pg-credentials/{pgCompany}/{user}',[ApiPartnerController::class, 'ApiPartnerPgCredentails'])->name('api-partner.pg.credentials')->middleware(middleware: 'can:api-partner-pg-credentials');
 });

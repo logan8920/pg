@@ -4,6 +4,18 @@ let form = document.getElementById('regForm'),
 (form && (form.addEventListener("submit", async function (e) {
   e.preventDefault();
   if (!$('#regForm').valid()) return false;
+
+  const $callback = $('#regForm[callbackFn]');
+  if($callback && $callback.attr('callbackFn')) {
+    const Fn = $callback.attr('callbackFn');
+    const callbackRes = await window[Fn]();
+    if(!callbackRes)  
+    { 
+      typeof(callbackErrorMessage) !== 'undefined' && toastr.error(callbackErrorMessage);
+      return false;
+    }
+  }
+
   const button = this.querySelector('[type=submit]');
   const forms = this;
   const buttonText = button.innerHTML;
@@ -389,6 +401,19 @@ function formatCurrency(ele) {
   ele.value = newValue;
 }
 
+function formatINR(value) {
+  let cleanValue = value.toString().replace(/[^0-9.]/g, ''); // remove commas, ₹, etc.
+  let number = parseFloat(cleanValue);
+
+  if (isNaN(number)) return '';
+
+  return '₹ ' + number.toLocaleString('en-IN', {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0
+  });
+}
+
+
 async function deleteConfirmation(ele, event) {
   event.preventDefault();
   Swal.fire({
@@ -431,4 +456,60 @@ async function deleteConfirmation(ele, event) {
   });
 }
 
+
+async function confirmationAndPost(event, data) {
+  event.preventDefault();
+  Swal.fire({
+    title: data.title ?? "Are you sure?",
+    text: data.text ?? "You won to retrive this!",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#3085d6",
+    cancelButtonColor: "#d33",
+    confirmButtonText: "Yes, Proceed!",
+    allowOutsideClick: false
+  }).then(async (result) => {
+    if (result.isConfirmed) {
+      toggleLoader();
+      try {
+        const res = await makeHttpRequest(data.href, data?.method ?? 'POST', data?.postData ?? []);
+        toggleLoader();
+        if (res.status) {
+          res?.data?.sweetAlert && Swal.fire({
+            title: "Deleted!",
+            text: res.message,
+            icon: "success"
+          });
+
+          !res?.data?.sweetAlert && toastr.success(res.message);
+
+          res?.data?.redirectUrl && toastr.success('Redirecting...') && setTimeout(() => { window.location = res?.data?.redirectUrl }, 1500)
+
+          res?.data?.reload && (window.loaction.reload());
+
+          res?.data?.confirmation && await confirmation(res.data.confirmation);
+
+          res.data.tableReqload && table.ajax && table.ajax.reload();
+
+        } else if (!res.success) {
+          Swal.fire({
+            title: "Error!!",
+            text: res.message,
+            icon: "error"
+          });
+        } else {
+          Swal.fire({
+            title: "Error!!",
+            text: "Something Went wrong!!",
+            icon: "error"
+          });
+        }
+      } catch (error) {
+        toggleLoader();
+        toastr.error(error)
+      }
+      
+    }
+  });
+}
 

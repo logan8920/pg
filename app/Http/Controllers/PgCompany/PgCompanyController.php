@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers\PgCompany;
 
-use App\Models\PgCompany;
+use App\Models\{PgCompany, Mode};
 use App\Http\Controllers\Controller;
+use App\Models\PgDefaultConfig;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use App\Traits\CommanTrait;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\File;
 use DB;
 
 class PgCompanyController extends Controller
@@ -305,6 +304,121 @@ class PgCompanyController extends Controller
             return response()->json([
                 'error' => $e->getMessage()
             ]);
+        }
+    }
+
+    public function defaultConfig(PgCompany $pgCompany)
+    {
+        if (auth()->user()->api_partner === 1) {
+            abort(404);
+        }
+
+        $partnerModeCompanies = $pgCompany->defaultConfig()
+            ->selectRaw('MIN(pg_company_id) as pg_company_id, MIN(c_per_day_limit) as c_per_day_limit')
+            ->groupBy('pg_company_id')
+            ->get()
+            ->map(function ($q) use ($pgCompany) {
+                $query = $pgCompany->defaultConfig()->select('charges', 'mode_id', "mode_limit")
+                    //->where('user_id', $q->user_id)
+                    ->where('pg_company_id', $q->pg_company_id);
+
+
+                $collection = $query->pluck('mode_limit', 'mode_id')->toArray();
+                // dd($collection);
+                $charges = $query->pluck('charges', 'mode_id')
+                    ->toArray();
+
+
+                $modes = [];
+                foreach ($charges as $modeId => $charge) {
+                    $modes[$modeId] = [
+                        'charges' => $charge,
+                        'mode_limit' => $collection[$modeId], // fixed this
+                    ];
+                }
+
+
+                $q->config = $modes;
+                return $q;
+            })->toArray();
+
+        $apiPartnerModeCompanies = [];
+
+        foreach ($partnerModeCompanies as $data) {
+            $apiPartnerModeCompanies[$data['pg_company_id']] = $data;
+        }
+    
+        $modes = Mode::get();
+        return view('pg-company.default-config', compact( 'pgCompany', 'modes', 'apiPartnerModeCompanies'));
+    }
+
+    public function defaultConfigUpdate(PgCompany $pgCompany, Request $request)
+    {
+        $validator = Validator::make(
+            $request->all(),
+            [
+                'pg' => 'required|array'
+            ]
+        );
+
+        if ($validator->fails()) {
+            return response()->json([
+                'validationError' => $validator->errors()->first()
+            ]);
+        }
+
+        try {
+
+            $post = $request->pg;
+            $postData = [];
+            $counter = 0;
+            foreach ($post as $company) {
+                if (isset($company['id']) && isset($company['mode']) && !empty($company['mode'])) {
+                    foreach ($company['mode'] as $mode) {
+                        if(isset($mode['id'])) {
+                            $postData[$counter]['c_per_day_limit'] = $company['c_per_day_limit'];
+                            $postData[$counter]['mode_id'] = $mode['id'];
+                            $postData[$counter]['mode_limit'] = $mode['limit'];
+                            if (isset($mode['charges']) && !empty($mode['charges'])) {
+                                $postData[$counter]['pg_company_id'] = $company['id'];
+                                $charges = [];
+                                foreach ($mode['charges']['min'] as $i => $data) {
+                                    $charges[$i] = [];
+                                    $charges[$i]['min'] = $mode['charges']['min'][$i];
+                                    $charges[$i]['max'] = $mode['charges']['max'][$i];
+                                    $charges[$i]['charges_type'] = $mode['charges']['charges_type'][$i];
+                                    $charges[$i]['amt'] = $mode['charges']['amt'][$i];
+                                    $postData[$counter]['charges'] = json_encode($charges);
+                                }
+                                $counter++;
+                            }
+                        }
+                    }
+                }
+            }
+            //dd($postData);
+            DB::beginTransaction();
+
+            $pgCompany->defaultConfig()->delete();
+
+            PgDefaultConfig::insert($postData);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => 'Default Api Config Update Successfully :)',
+                'sweetAlert' => true,
+                'redirect' => route('pg-company.list')
+            ]);
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'error' => $e->getMessage()
+            ]);
+
         }
     }
 

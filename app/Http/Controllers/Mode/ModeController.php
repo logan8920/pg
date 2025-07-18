@@ -169,7 +169,7 @@ class ModeController extends Controller
         }
 
         $postData = $request->input();
-        $postData['updated_at'] = now();
+        $postData['updated_at'] = now("Asia/Kolkata");
 
         try {
 

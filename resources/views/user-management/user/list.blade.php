@@ -4,6 +4,7 @@
 @endsection
 @section('css')
     <link href="{{ asset('assets/vendor/datatables/dataTables.bootstrap4.min.css') }}" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('assets/css/virtual-select.min.css') }}">
 @endsection
 @section('content')
     <!-- Begin Page Content -->
@@ -28,6 +29,7 @@
                                 <th>Sr No.</th>
                                 <th>Name</th>
                                 <th>Email</th>
+                                <th>Roles</th>
                                 <th>Created Date</th>
                                 <th>Action</th>
                             </tr>
@@ -76,18 +78,17 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="text-black-50" for="role">Select Role <span class="text-danger">*</span></label>
+                    <label class="text-black-50" for="role">Select Roles <span class="text-danger">*</span></label>
                     <div class="input-group">
                         <div class="input-group-prepend">
                             <div class="input-group-text">
                                 <i class="fas fa-user"></i>
                             </div>
                         </div>
-                        <select name="role" class="form-control after-parent" id="role"
-                            placeholder="Enter Role..." required>
-                            <option value="">Select Role...</option>
+                        <select name="role" class="after-parent" id="role"
+                            placeholder="Select Roles..." required>
                             @foreach ($roles as $role)
-                                <option value="{{ $role->name }}">{{ ucwords($role->name) }}</option>
+                                <option value="{{ $role->id }}">{{ ucwords($role->name) }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -138,6 +139,7 @@
             }
             offcanvas.querySelector('form').password.setAttribute('required',true);
             offcanvas.querySelector('form').password_confirmation.setAttribute('required',true);
+            role.$ele.setValue([]);
             offcanvas.querySelector('form').action = openBtn.dataset.href;
             offcanvas.querySelector('form').reset();
             offcanvas.querySelector('.offcanvas-header h4').textContent = "Add New User";
@@ -160,7 +162,18 @@
 @section('js')
     <script>
         // Data Table Config
-        let tableData = {};
+        let role,tableData = {};
+        const colors = [
+            "primary",
+            "secondary",
+            "success",
+            "danger",
+            "warning",
+            "info",
+            "light",
+            "dark"
+        ];
+        const pill = (text,classColor) => `<a href="javascript:;" class="badge badge-${classColor}">${text}</a>`;
         let cols = [{
                 data: "s_no"
             },
@@ -169,6 +182,9 @@
             },
             {
                 data: "email"
+            },
+            {
+                data: "roles"
             },
             {
                 data: "created_at"
@@ -198,6 +214,12 @@
             },
             {
                 targets: 3,
+                render: function(e, t, a, s) { 
+                    return a.roles.map(role => pill(role.name,colors[Math.floor(Math.random() * colors.length)])).join(" | ");
+                }
+            },
+            {
+                targets: 4,
                 render: function(e, t, a, s) {
 
                     return a.created_at ? a.created_at.toConvertDatetime('D M, Y') : '-';
@@ -247,6 +269,7 @@
             }
         }
     </script>
+    <script src="{{ asset('assets/js/virtual-select.min.js') }}"></script>
     <script src="{{ asset('assets/vendor/datatables/jquery.dataTables.min.js') }}"></script>
     <script src="{{ asset('assets/vendor/datatables/dataTables.bootstrap4.min.js') }}"></script>
     <script src="{{ asset('assets/js/jquery.validate.min.js') }}"></script>
@@ -274,7 +297,14 @@
             //Form Submit Handle
             $('#user-form').on("submit",function(e){
                 e.preventDefault();
-            })
+            });
+
+            role = VirtualSelect.init({
+                ele: '#role',
+                required: true,
+                multiple: true
+                // allowNewOption: true
+            });
 
         });
 
@@ -296,6 +326,7 @@
             form.name.value = tableData[id].name;
             form.email.value = tableData[id].email;
             form.role.value = tableData[id].roles[0].name;
+            role.$ele.setValue(tableData[id].roles.map(ele => ele.id));
         }
     </script>
     @include('scripts.datatable')

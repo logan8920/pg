@@ -32,4 +32,14 @@ class PgCompany extends Model
             'pg_config' => 'array'
         ];
     }
+
+    public function defaultConfig()
+    {
+        return $this->hasMany(PgDefaultConfig::class, 'pg_company_id', 'id');
+    }
+
+    public function apiPgCred()
+    {
+        return $this->hasOne(UserPgCredential::class, 'pg_id', 'id');
+    }
 }

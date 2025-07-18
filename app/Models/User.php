@@ -8,6 +8,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use function PHPUnit\Framework\returnArgument;
 
 class User extends Authenticatable
 {
@@ -58,7 +59,7 @@ class User extends Authenticatable
     }
 
     public function unicode() {
-        return 'TXN-' . now()->format('YmdHis') . '-' . mt_rand(1000, 9999);
+        return 'TXN-' . now("Asia/Kolkata")->format('YmdHis') . '-' . mt_rand(1000, 9999);
     }
 
     public function createdBy() {
@@ -75,6 +76,10 @@ class User extends Authenticatable
     public function checkPartner($partnerId): bool
     {
         return $this->username === $partnerId;
+    }
+
+    public function apiPgCredentials(){
+        return $this->belongsToMany(PgCompany::class,'user_pg_credentials', 'user_id','pg_id');
     }
 
 }

@@ -2,13 +2,11 @@
 
 namespace App\Libraries;
 
-use App\Models\PaymentTransaction;
-use App\Models\Pgtxn;
-use App\Models\ApiPartnerModeCompany;
+use App\Models\{PaymentTransaction,Pgtxn,ApiPartnerModeCompany,UserPgCredential};
+use Exception;
 use Illuminate\Support\Collection;
 use Carbon\Carbon;
 use DB;
-use function PHPUnit\Framework\returnArgument;
 
 /**
  * Class PaymentBankit
@@ -83,19 +81,31 @@ class PaymentBankit
      *
      * @return PaymentBankit
      */
-    public static function withLimits()
+    public static function withLimits($filters = null)
     {
+        if (is_null($filters)) {
+            $filters = self::$filters;
+        }
         $limits = ApiPartnerModeCompany::select("mode_limit", "charges", "c_per_day_limit")
-            ->where(self::$filters)
+            ->where($filters)
             ->first();
-        self::$transaction->put('mode_limit', $limits?->mode_limit);
-        self::$transaction->put('pg_daily_limit', $limits?->c_per_day_limit);
+
+        $return = null;
+
+        if (self::$transaction) {
+            self::$transaction->put('mode_limit', $limits?->mode_limit);
+            self::$transaction->put('pg_daily_limit', $limits?->c_per_day_limit);
+            $return = self::$transaction;
+        } else {
+            $return = $limits;
+        }
+
 
         if ($limits) {
             self::$slab = $limits->charges;
         }
 
-        return new self(self::$transaction);
+        return new self($return);
     }
 
     /**
@@ -133,11 +143,36 @@ class PaymentBankit
 
             DB::beginTransaction();
 
-                $payment = PaymentTransaction::create($successTxnData);
-                Pgtxn::whereTxnno($payment->txnno)->update($data);
-                $txn = Pgtxn::whereTxnno($payment->txnno)->first();
-                $txn->update(['txnid' => $payment->id]);
+            $payment = PaymentTransaction::create($successTxnData);
+            Pgtxn::whereTxnno($payment->txnno)->update($data);
+            $txn = Pgtxn::whereTxnno($payment->txnno)->first();
+            $txn->update(['txnid' => $payment->id]);
 
+            DB::commit();
+
+            return $txn;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+
+    /**
+     * Attach the configured limit from ApiPartnerModeCompany based on filters.
+     *
+     * @return PaymentBankit
+     */
+    public static function tnxRefund(array $data, array $refundTxnData, float $balanceAfterRefund)
+    {
+        try {
+
+            DB::beginTransaction();
+            $payment = PaymentTransaction::create($refundTxnData);
+            Pgtxn::whereRefid($payment->refid)->update($data);
+            $txn = Pgtxn::whereRefid($payment->refid)->first();
+            $txn->update(['refundtxnid' => $payment->id]);
+            $txn->user->update(['balance' => $balanceAfterRefund]);
             DB::commit();
 
             return $txn;
@@ -177,4 +212,57 @@ class PaymentBankit
             ? self::$transaction->toArray()
             : (array) self::$transaction;
     }
+    public static function getAvailableGateway($amount = null, $user_id, $mode_id)
+    {
+        $companies = ApiPartnerModeCompany::selectRaw('pg_company_id, MIN(c_per_day_limit) as c_per_day_limit')
+            ->where(['user_id' => $user_id, 'mode_id' => $mode_id])
+            ->groupBy('pg_company_id')
+            ->get()
+            ->map(function ($company) use ($user_id, $mode_id) {
+                $modeLimits = ApiPartnerModeCompany::where([
+                    'user_id' => $user_id,
+                    'pg_company_id' => $company->pg_company_id,
+                    'mode_id' => $mode_id,
+                ])->pluck('mode_limit', 'mode_id')->toArray();
+
+                $company->mode_limits = $modeLimits;
+                
+                $company->apiPgCredentials = $company->company->apiPgCred()->wherePgId($company->pg_company_id)->first();
+
+                return $company;
+            });
+
+            
+
+        foreach ($companies as $company) {
+            $pgCompanyId = $company->pg_company_id;
+
+            $today_pg_amount = PaymentTransaction::where([
+                'user_id' => $user_id,
+                'pg_company_id' => $pgCompanyId
+            ])
+                ->whereDate('created_at', today())
+                ->sum('amount');
+            
+            $today_mode_amount = PaymentTransaction::where([
+                'user_id' => $user_id,
+                'pg_company_id' => $pgCompanyId,
+                'mode_id' => $mode_id
+            ])
+                ->whereDate('created_at', today())
+                ->sum('amount');
+                //dd($today_mode_amount + $amount);
+            if (
+                $today_pg_amount + $amount <= $company->c_per_day_limit &&
+                isset($company->mode_limits[$mode_id]) &&
+                $today_mode_amount + $amount <= $company->mode_limits[$mode_id]
+            ) {
+                return $company?->apiPgCredentials ? $company : throw new Exception('Api Partner Credentials Not Found!',28);
+            }
+        }
+
+        throw new Exception('No Eligible PG Found for Api Partner',13); // no eligible PG found
+    }
+
+
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use Exception;
 use Illuminate\Http\Request;
 use App\Models\Pgtxn;
 use App\Models\LogRequest;
@@ -14,6 +15,8 @@ use App\Traits\{ApiResponseTrait};
 use App\Libraries\PaymentBankit;
 use Illuminate\Support\Facades\{Log};
 use Illuminate\Validation\Rule;
+use Carbon\Carbon;
+use DB;
 
 class PgtxnController extends Controller
 {
@@ -21,14 +24,18 @@ class PgtxnController extends Controller
     /**
      * Display a listing of the resource.
      */
+
+    private $status = ["Failed", "Success", "Initiated", "Complete", "Refund"];
+
     public function index(Request $request, JwtService $jwtService)
     {
+        $info = [];
+
         try {
             $partner_info = $request->apiCredentials();
 
-            //dd($partner_info->user->username);
             if (!$partner_info)
-                return $this->errorResponse('Authentication failed', 4);
+                return $this->errorResponse('Authentication Failed', 0);
 
             $this->is_valid($partner_info);
 
@@ -40,7 +47,7 @@ class PgtxnController extends Controller
             $token = $request->header('Token');
 
             if (!$token)
-                return $this->errorResponse('Invalid Jwt Token.', 0, 401);
+                return $this->errorResponse('Invalid Jwt Token.', 2, 401);
 
             $body = json_encode($request->all());
             $method = 'GENERATE-URL';
@@ -55,33 +62,37 @@ class PgtxnController extends Controller
             );
 
             if (!$info['status'])
-                return $this->errorResponse($info['message'] ?? 'Unable to process request', $info['status'] ? 2 : 3);
+                return $this->errorResponse($info['message'] ?? 'Unable to process request', $info['code'] ?? 25);
 
-            if (
-                !
-                (
-                    $info['data']['iss'] === "RNFICMS" &&
-                    $info['data']['partnerId'] === $partner_info->user?->username
-                )
-            ) {
-                return $this->errorResponse('Invalid Token Data!', $info['status'] ? 8 : 9);
+            if (!($info['data']['partnerId'] === $partner_info->user?->username)) {
+                return $this->errorResponse("Partner ID Doesn't Match!", 10);
             }
 
             $allModes = Mode::get()->pluck('name')->toArray();
 
             $validator = Validator::make($request->all(), [
                 'mode' => 'required|in:' . implode(',', $allModes),
-                'amount' => 'required|numeric|min:100',
+                'amount' => [
+                    'required',
+                    'numeric',
+                    'min:100',
+                    'max:1000000',
+                    function ($attribute, $value, $fail) {
+                        if (!(is_numeric($value) && floor($value) == $value)) {
+                            $fail("The $attribute must be a decimal (float) with decimal places.");
+                        }
+                    }
+                ],
                 'mobile' => 'required|regex:/^[6-9][0-9]{9}$/',
                 'email' => 'required|email',
-                'refid' => 'required|string',
+                'refid' => 'required|string|max:16|unique:pgtxns,refid',
                 'redirect_url' => 'required|url',
-                'card' => 'required_if:mode,!=,NB|string',
-                'name' => 'required_if:mode,!=,NB|string',
+                'card' => 'nullable|required_unless:mode,NB|numeric|digits:4',
+                'name' => 'nullable|required_unless:mode,NB|string',
             ]);
 
             if ($validator->fails())
-                return $this->errorResponse($validator->errors()->first(), 0);
+                throw new Exception($validator->errors()->first(), 11);
 
 
             $duplicate = Pgtxn::where([
@@ -90,12 +101,12 @@ class PgtxnController extends Controller
             ])->first();
 
             if ($duplicate)
-                return $this->errorResponse('Duplicate Ref number', 1);
+                throw new Exception('Duplicate Ref number', 4);
 
             $mode = Mode::whereName(trim($request->mode))->first();
 
             if (!$mode)
-                return $this->errorResponse('Unable to get transaction mode', 1);
+                throw new Exception('Unable to get transaction mode', 1);
 
 
             $txns = [
@@ -117,7 +128,7 @@ class PgtxnController extends Controller
             $transaction = (new Pgtxn)->initiate($txns);
 
             if ($transaction['status'] === false)
-                return $this->errorResponse($transaction['message'], 3);
+                throw new Exception($transaction['message'], 9);
 
 
             $txns['txnno'] = $transaction['txnno'];
@@ -128,8 +139,16 @@ class PgtxnController extends Controller
 
             $transaction['modal']->update([
                 'encdata' => $encdata,
-                'addeddate' => now()->format('Y-m-d'),
-                'dateadded' => now()
+                'addeddate' => now("Asia/Kolkata")->format('Y-m-d'),
+                'dateadded' => now("Asia/Kolkata")
+            ]);
+
+            $transaction['modal']->tQuery()->create([
+                'client_request' => [
+                    'headers' => $request->headers->all(),
+                    'body' => $request->getContent(),
+                    'payload' => $request->all(),
+                ]
             ]);
 
             return $this->successResponse(
@@ -137,19 +156,22 @@ class PgtxnController extends Controller
                     'url' => route('pg.redirect'),
                     'encdata' => $encdata ?? ''
                 ],
-                'Data Successfully Generated'
+                'Data Successfully Generated',
+                logInsertedId: $info['log_insert_id'] ?? 0
             );
         } catch (\Throwable $e) {
             return $this->errorResponse(
                 $e->getMessage(),
-                0,
-                500
+                $e->getCode(),
+                500,
+                logInsertedId: $info['log_insert_id'] ?? 0
             );
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return $this->errorResponse(
                 $e->getMessage(),
-                0,
-                500
+                $e->getCode(),
+                500,
+                logInsertedId: $info['log_insert_id'] ?? 0
             );
         }
     }
@@ -165,9 +187,10 @@ class PgtxnController extends Controller
         );
 
         if ($validator->fails()) {
-            return $this->errorResponse($validator->errors()->first(), 0);
+            return $this->errorResponse($validator->errors()->first(), 11);
             //return redirect()->route('pg-transaction.failure');
         }
+        $decrptdata = [];
         try {
             $encData = $request->encdata;
             $decrptdata = json_decode(UserService::decrypt($encData), true);
@@ -179,7 +202,7 @@ class PgtxnController extends Controller
                         'required',
                         'string',
                         Rule::unique('pgtxns')->where(function ($query) {
-                            return $query->where('status','!=', 2);
+                            return $query->where('status', '!=', 2);
                         }),
                     ],
                     'user_id' => 'required|exists:users,id',
@@ -187,8 +210,8 @@ class PgtxnController extends Controller
                     'mobile' => 'required|digits:10',
                     'email' => 'required|email',
                     'mode_pg' => 'required|exists:modes,name', // adjust if using ID
-                    'card' => 'nullable|string|max:16',
-                    'name' => 'required|string|max:255',
+                    'card' => 'nullable|required_unless:mode,NB|numeric|digits:4',
+                    'name' => 'nullable|required_unless:mode,NB|string',
                     'refid' => [
                         'required',
                         'string',
@@ -205,20 +228,24 @@ class PgtxnController extends Controller
             );
 
             if ($validator->fails()) {
-                return $this->errorResponse($validator->errors()->first(), 0);
+                throw new Exception($validator->errors()->first(), 11);
                 //return redirect()->route(route: 'pg-transaction.failure');
             }
 
-            $paymentGateway = User::whereId($decrptdata['user_id'])->first()->apiConfig()->first()?->company;
+            $mode = Mode::whereId($decrptdata['mode_id'])->first();
+            $paymentGateway = PaymentBankit::getAvailableGateway(
+                $decrptdata['amount'],
+                $decrptdata['user_id'],
+                $mode->id
+            )?->company;
 
             if (!$paymentGateway)
-                throw new \Exception("No Payment Gateway Not Found!", 1);
-
+                throw new Exception("Payment Gateway Not Found or Limit Excusted", 13);
 
             $path = (string) "App\Services\\" . $paymentGateway->service_class_name;
 
             if (!class_exists($path))
-                throw new \Exception("{$paymentGateway->name} Service Class Not Found!", 2);
+                throw new Exception("{$paymentGateway->name} Service Class Not Found!", 14);
 
             $paymentService = new $path();
 
@@ -226,12 +253,35 @@ class PgtxnController extends Controller
 
             return view('payment-gateway.pgredirect', $data);
 
-        } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage(), code: $e->getCode());
-            // return redirect()->route(route: 'pg-transaction.failure');
+        } catch (Exception $e) {
+            if ($decrptdata['txnno']) {
+                $txn = Pgtxn::where('txnno', $decrptdata['txnno'])->first();
+                if ($txn) {
+                    $txn->update([
+                        'status' => 0,
+                        'errormsg' => $e->getMessage()
+                    ]);
+                }
+            }
+            $decrptdata["message"] = $e->getMessage();
+            $resData = base64_encode(UserService::encrypt(http_build_query($decrptdata)));
+            $url = uri("/gateway-pg-receipt?resdata={$resData}");
+            return redirect($url);
         } catch (\Throwable $e) {
-            // return redirect()->route(route: 'pg-transaction.failure');
-            return $this->errorResponse($e->getMessage(), $e->getCode());
+
+            if ($decrptdata['txnno']) {
+                $txn = Pgtxn::where('txnno', $decrptdata['txnno'])->first();
+                if ($txn) {
+                    $txn->update([
+                        'status' => 0,
+                        'errormsg' => $e->getMessage()
+                    ]);
+                }
+            }
+            $decrptdata["message"] = $e->getMessage();
+            $resData = base64_encode(UserService::encrypt(http_build_query($decrptdata)));
+            $url = uri("/gateway-pg-receipt?resdata={$resData}");
+            return redirect($url);
         }
     }
 
@@ -244,21 +294,25 @@ class PgtxnController extends Controller
             $pgCompany = PgCompany::whereName($gateway)->first();
 
             if (!$pgCompany)
-                throw new \Exception("Payment Gateway {$gateway} Not Found!", 1);
+                throw new Exception("Payment Gateway {$gateway} Not Found!", 14);
 
 
             $path = (string) "App\Services\\" . $pgCompany->service_class_name;
 
             if (!class_exists($path))
-                throw new \Exception("{$gateway} Service CLass Not Found!", 2);
+                throw new Exception("{$gateway} Service CLass Not Found!", 14);
 
             $paymentService = new $path();
 
             $recieptdata = $paymentService->handlePgCallback();
 
-            return redirect(url("gateway-pg-receipt?resdata={$recieptdata}"));
+            if (is_array($recieptdata)) {
+                return response()->json($recieptdata);
+            } else {
+                return redirect(url("gateway-pg-receipt?resdata={$recieptdata}"));
+            }
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
 
             return $this->errorResponse($e->getMessage(), $e->getCode(), 422);
 
@@ -314,7 +368,7 @@ class PgtxnController extends Controller
                 $charges = $getpgComm->charges;
 
                 if (!$charges)
-                    throw new \Exception("Charges Not Updated!", 1);
+                    throw new Exception("Charges Not Updated!", 1);
 
 
                 $amtAfterDudection = $this->calculateCharge($data['amount'], $charges);
@@ -403,27 +457,29 @@ class PgtxnController extends Controller
         $validator = Validator::make(
             $request->all(),
             [
-                'iss' => 'required',
+                //'iss' => 'required',
                 //'product' => 'required',
                 //'timestamp' => 'required',
                 'reqid' => 'required',
                 'partnerId' => 'required',
-                'key' => 'required'
+                'key' => 'required',
+                'method' => 'required|in:GENERATE-URL,CHECK-TXN-STATUS'
             ]
         );
         try {
 
             if ($validator->fails())
-                throw new \Exception("Error Processing Request");
+                throw new Exception($validator->errors()->first());
 
             $this->checkValidRequest($request);
 
             $data = [
-                'iss' => $request->iss,
+                //'iss' => $request->iss,
                 //'product' => $request->product,
                 'timestamp' => $request?->timestamp ?? time(),
                 'reqid' => $request->reqid,
-                'partnerId' => $request->partnerId
+                'partnerId' => $request->partnerId,
+                'method' => $request->method
             ];
 
             $key = str_replace(' ', '+', trim($request->key));
@@ -431,21 +487,22 @@ class PgtxnController extends Controller
             $token = $jwtService->generateToken($data, $key, 300); // 5 mints
 
             if (!$token)
-                throw new \Exception("Unable To Generate Token, Please Contact to Vendor!", 0);
+                throw new Exception("Unable To Generate Token, Please Contact to Vendor!", 15);
 
-            return response()->json([
-                "status" => true,
-                "statuscode" => 1,
-                "token" => $token
-            ], 200);
+            return $this->successResponse(
+                [
+                    "token" => $token,
+                    "method" => $request->method
+                ],
+                "Token Generate Successfully!"
+            );
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
 
-            return response()->json([
-                "status" => false,
-                "statuscode" => 0,
-                "message" => $e->getMessage()
-            ], 500);
+            return $this->errorResponse(
+                $e->getMessage(),
+                $e->getCode()
+            );
 
         }
 
@@ -460,7 +517,7 @@ class PgtxnController extends Controller
             $decodedData = (array) $decoded;
 
             if (!empty($decodedData)) {
-                if (($decodedData['iss'] ?? '') === 'RNFICMS') {
+                if (($decodedData['method'] ?? '') === $method) {
                     if (!empty($decodedData['timestamp'])) {
                         if (!empty($decodedData['reqid'])) {
 
@@ -476,43 +533,44 @@ class PgtxnController extends Controller
                                     ->where('reqid', $reqid)
                                     ->exists();
 
-                                if (!$exists || true) {
+                                if (!$exists) {
 
-                                    $inserted = true;
-                                    // $inserted = LogRequest::create([
-                                    //     'partner_id' => $userId,
-                                    //     'reqid' => $reqid,
-                                    //     'request' => json_encode($decodedData),
-                                    //     'body' => $body,
-                                    //     'method' => $method
-                                    // ]);
+                                    //$inserted = true;
+                                    $inserted = LogRequest::create([
+                                        'partner_id' => $userId,
+                                        'reqid' => $reqid,
+                                        'request' => $decodedData,
+                                        'body' => $body,
+                                        'method' => $method
+                                    ]);
 
-                                    return $inserted ? ['status' => true, 'message' => "Success", "data" => $decodedData]
-                                        : ['status' => false, 'message' => 'Something went wrong.'];
+                                    return $inserted ? ['status' => true, 'message' => "Success", "data" => $decodedData, 'log_insert_id' => $inserted->id]
+                                        : ['status' => false, 'message' => 'Unable To Log Request right now.', "code" => 3];
 
                                 } else {
-                                    return ['status' => false, 'message' => 'Duplicate Request ID Found.'];
+                                    return ['status' => false, 'message' => 'Duplicate Request ID Found.', "code" => 4];
                                 }
 
                             } else {
-                                return ['status' => false, 'message' => 'Request timestamp is older than 5 min.'];
+                                return ['status' => false, 'message' => 'Request timestamp is older than 5 min.', "code" => 5];
                             }
 
                         } else {
-                            return ['status' => false, 'message' => 'Invalid request ID'];
+                            return ['status' => false, 'message' => 'Invalid request ID', "code" => 6];
                         }
                     } else {
                         return ['status' => false, 'message' => 'Invalid timestamp'];
                     }
                 } else {
-                    return ['status' => false, 'message' => 'Invalid iss'];
+                    return ['status' => false, 'message' => 'Invalid Method!', "code" => 7];
                 }
+
             } else {
-                return ['status' => false, 'message' => 'Unable to decode data.'];
+                return ['status' => false, 'message' => 'Unable to decode data.', "code" => 8];
             }
 
-        } catch (\Exception $e) {
-            return ['status' => false, 'message' => $e->getMessage()];
+        } catch (Exception $e) {
+            return ['status' => false, 'message' => $e->getMessage(), "code" => 9];
         }
     }
 
@@ -523,7 +581,7 @@ class PgtxnController extends Controller
         $config = $partner_info->user->apiConfig()->whereIn('pg_company_id', $companies)->get()->toArray();
 
         if (!count($config))
-            throw new \Exception('Config Not Set.', 4);
+            throw new Exception('Partner Configuration Not Set.', 16);
     }
 
     private function checkValidRequest($req)
@@ -533,12 +591,12 @@ class PgtxnController extends Controller
         $key = str_replace(' ', '+', trim($req->key));
 
         if (!$valid->checkKey(trim($key)))
-            throw new \Exception("Invalid Partner Key", 6);
+            throw new Exception("Invalid Partner Key", 17);
 
         $user = $valid->user->checkPartner($req->partnerId);
 
         if (!$user)
-            throw new \Exception("Invalid Partner Id.", 6);
+            throw new Exception("Invalid Partner Id.", 18);
 
         $reqid = $req->partnerId . $req->reqid;
 
@@ -547,9 +605,140 @@ class PgtxnController extends Controller
             ->exists();
 
         if ($exists)
-            throw new \Exception('Duplicate Request ID Found.', 7);
+            throw new Exception('Duplicate Request ID Found.', 4);
 
         return true;
+    }
+
+    public function txnStatus(Request $request, JwtService $jwtService)
+    {
+        $info = [];
+        try {
+            $partner_info = $request->apiCredentials();
+
+            //dd($partner_info->user->username);
+            if (!$partner_info)
+                return $this->errorResponse('Authentication failed', 0);
+
+            $this->is_valid($partner_info);
+
+
+            if (!in_array(1, [$partner_info->pg]))
+                return $this->errorResponse('PG service is disabled.', 1, 404);
+
+
+            $token = $request->header('Token');
+
+            if (!$token)
+                return $this->errorResponse('Invalid Jwt Token.', 2, 401);
+
+            $body = $request->all();
+            $method = 'CHECK-TXN-STATUS';
+
+            $info = $this->decodeToken(
+                $token,
+                $partner_info->key,
+                $partner_info->user->username,
+                $body,
+                $method,
+                $jwtService
+            );
+
+            if (!$info['status'])
+                return $this->errorResponse($info['message'] ?? 'Unable to process request', $info['code'] ?? 25);
+
+            if (!($info['data']['partnerId'] === $partner_info->user?->username)) {
+                return $this->errorResponse("Partner ID Doesn't Match!", 10);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'refid' => 'required|string'
+            ]);
+
+            if ($validator->fails())
+                return $this->errorResponse($validator->errors()->first(), 11);
+
+
+            $txn = Pgtxn::where([
+                'refid' => $request->refid,
+                'user_id' => $partner_info['user_id']
+            ])->first();
+
+            if (!$txn)
+                return $this->errorResponse('Invalid Reference Number', 19);
+
+            $response = [
+                "id" => $txn->txnno,
+                "amount" => $txn->amt_after_deduction ?? $txn->amount,
+                "banktxnid" => $txn->utr,
+                "errormsg" => $txn?->errormsg ?? '',
+                "{$txn?->company?->name}_order_id" => $txn->order_id,
+                "paymentmode" => $txn?->mode?->name,
+                "msg" => $txn->status == 4 ? $txn?->refund_remarks : $txn->remarks,
+                "status" => $this->status[((int) $txn->status)] ?? ''
+            ];
+
+            return $this->successResponse(
+                $response,
+                'Status Fetch Successfully!',
+                logInsertedId: $info['log_insert_id'] ?? 0
+            );
+        } catch (\Throwable $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                $e->getCode(),
+                500,
+                logInsertedId: $info['log_insert_id'] ?? 0
+            );
+        } catch (Exception $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                $e->getCode(),
+                500,
+                logInsertedId: $info['log_insert_id'] ?? 0
+            );
+        }
+    }
+
+
+    public function updateIniTransaction()
+    {
+        try {
+            $currentTime = Carbon::now()->subMinutes(30);
+
+            $timeoutTxns = Pgtxn::where('status', 2)
+                ->where('created_at', '<=', $currentTime)
+                ->get();
+
+            if ($timeoutTxns->isNotEmpty()) {
+
+                DB::beginTransaction();
+
+                Pgtxn::whereIn('id', $timeoutTxns->pluck('id'))
+                    ->update([
+                        'status' => 0,
+                        'errormsg' => 'Transaction Timeout',
+                        'updated_at' => now()
+                    ]);
+
+                foreach ($timeoutTxns as $txn) {
+                    Log::channel('cron_logs')->info('Transaction marked as timeout', [
+                        'id' => $txn->id,
+                        'txnno' => $txn->txnno,
+                        'refid' => $txn->refid,
+                    ]);
+                }
+
+                DB::commit();
+
+            } else {
+                Log::channel('cron_logs')->info("No timed-out transactions found.");
+            }
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::channel('cron_logs')->error('Exception during timeout update: ' . $e->getMessage());
+        }
     }
 
 }

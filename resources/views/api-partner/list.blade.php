@@ -4,6 +4,7 @@
 @endsection
 @section('css')
     <link href="{{ asset('assets/vendor/datatables/dataTables.bootstrap4.min.css') }}" rel="stylesheet">
+    <link rel="stylesheet" href="{{ asset('assets/css/virtual-select.min.css') }}">
     <style>
         .validate {
             border - radius: 20 px;
@@ -80,11 +81,11 @@
                                 <th>Username</th>
                                 <th>Email</th>
                                 <th>Phone</th>
-                                 @if(auth()->user()->api_partner === 0)
-                                <th>Status</th>
-                                <th>Added Date</th>
-                                <th>Datetime</th>
-                                <th>Created By</th>
+                                @if (auth()->user()->api_partner === 0)
+                                    <th>Status</th>
+                                    <th>Added Date</th>
+                                    <th>Datetime</th>
+                                    <th>Created By</th>
                                 @endif
                                 <th>Api Configuration</th>
                                 <th>Action</th>
@@ -99,157 +100,182 @@
     </div>
 
     @include('partials.otp-modal')
-    @canany(['api-partner-create','api-partner-edit'])
-    <!-- /.container-fluid -->
-    <div class="offcanvas w-25 overflow-auto" id="myOffcanvas">
-        <div class="offcanvas-header">
-            <h4 class="text-black-50">Add New User</h4>
-            <button id="closeOffcanvas"
-                style="background:none; border:none; color:blak; font-size:20px; cursor:pointer;">&times;</button>
+    @canany(['api-partner-create', 'api-partner-edit'])
+        <!-- /.container-fluid -->
+        <div class="offcanvas w-25 overflow-auto" id="myOffcanvas">
+            <div class="offcanvas-header">
+                <h4 class="text-black-50">Add New User</h4>
+                <button id="closeOffcanvas"
+                    style="background:none; border:none; color:blak; font-size:20px; cursor:pointer;">&times;</button>
+            </div>
+            <hr>
+            <div class="offcanvas-body">
+                <form autocomplete="off" action="" id="regForm" method="post" validate>
+                    @csrf
+                    <div class="form-group">
+                        <label class="text-black-50" for="name">Partner Name <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <div class="input-group-text">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                            </div>
+                            <input type="text" name="name" class="form-control after-parent" id="name"
+                                placeholder="Enter Name..." required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="text-black-50" for="firmname">Firm Name <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <div class="input-group-text">
+                                    <i class="fas fa-building"></i>
+                                </div>
+                            </div>
+                            <input type="text" name="firmname" class="form-control after-parent" id="firmname"
+                                placeholder="Enter Firm Name..." required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="text-black-50" for="business_name">Business Name <span
+                                class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <div class="input-group-text">
+                                    <i class="fas fa-industry"></i>
+                                </div>
+                            </div>
+                            <input type="text" name="business_name" class="form-control after-parent" id="business_name"
+                                placeholder="Enter Business Name..." required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="text-black-50" for="username"> Username <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <div class="input-group-text">
+                                    <i class="fas fa-user-circle"></i>
+                                </div>
+                            </div>
+                            <input type="text" name="username" class="form-control after-parent" id="username"
+                                placeholder="Generate User Name..." required readonly>
+                            <div class="input-group-append">
+                                <label class="input-group-text" style="cursor: pointer" title="Generate Username">
+                                    <i class="fas fa-cog" id="generate-username" data-bs-toggle="tooltip" title="Generate Username"></i>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="text-black-50" for="email">Email <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <div class="input-group-text">
+                                    <i class="fas fa-envelope"></i>
+                                </div>
+                            </div>
+                            <input type="email" name="email" class="form-control after-parent" id="email"
+                                placeholder="Enter Email..." required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="text-black-50" for="phone">Phone <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <div class="input-group-text">
+                                    <i class="fas fa-phone-alt"></i>
+                                </div>
+                            </div>
+                            <input type="number" name="phone" maxlength="10" class="form-control after-parent num"
+                                id="phone" placeholder="0123456789" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="text-black-50" for="payment_gateway">Select Payment Gateway
+                            <svg xmlns="http://www.w3.org/2000/svg" 
+                                viewBox="0 0 50 50" 
+                                width="15px" 
+                                height="15px"
+                                data-bs-toggle="tooltip" 
+                                data-bs-placement="top"
+                                style="cursor: pointer;"
+                                title="Select PG to set Default settings to api partner">
+                                <path
+                                    d="M 25 2 C 12.309295 2 2 12.309295 2 25 C 2 37.690705 12.309295 48 25 48 C 37.690705 48 48 37.690705 48 25 C 48 12.309295 37.690705 2 25 2 z M 25 4 C 36.609824 4 46 13.390176 46 25 C 46 36.609824 36.609824 46 25 46 C 13.390176 46 4 36.609824 4 25 C 4 13.390176 13.390176 4 25 4 z M 25 11 A 3 3 0 0 0 22 14 A 3 3 0 0 0 25 17 A 3 3 0 0 0 28 14 A 3 3 0 0 0 25 11 z M 21 21 L 21 23 L 22 23 L 23 23 L 23 36 L 22 36 L 21 36 L 21 38 L 22 38 L 23 38 L 27 38 L 28 38 L 29 38 L 29 36 L 28 36 L 27 36 L 27 21 L 26 21 L 22 21 L 21 21 z" />
+                            </svg>
+                        </label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <div class="input-group-text">
+                                    <i class="fas fa-users"></i>
+                                </div>
+                            </div>
+                            <select name="payment_gateway" class="after-parent" id="payment_gateway"
+                                placeholder="Select Payment Gateway..." multiple></select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="text-black-50" for="status">Select Status <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <div class="input-group-prepend">
+                                <div class="input-group-text">
+                                    <i class="fas fa-clock"></i>
+                                </div>
+                            </div>
+                            <select name="status" class="form-control after-parent" id="role"
+                                placeholder="Enter Status..." required>
+                                <option value="">Select Status...</option>
+                                <option value="0">In-active</option>
+                                <option value="1">Active</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group mt-2">
+                        <button class="btn btn-danger" type="submit"><i class="fas fa-paper-plane"></i>
+                            &nbsp;Submit</button>
+                        <button class="btn btn-warning" type="reset"><i class="fas fa-redo"></i> &nbsp;Cancel</button>
+                    </div>
+                </form>
+            </div>
         </div>
-        <hr>
-        <div class="offcanvas-body">
-            <form autocomplete="off" action="" id="regForm" method="post" validate>
-                @csrf
-                <div class="form-group">
-                    <label class="text-black-50" for="name">Partner Name <span class="text-danger">*</span></label>
-                    <div class="input-group">
-                        <div class="input-group-prepend">
-                            <div class="input-group-text">
-                                <i class="fas fa-user"></i>
-                            </div>
-                        </div>
-                        <input type="text" name="name" class="form-control after-parent" id="name"
-                            placeholder="Enter Name..." required>
-                    </div>
-                </div>
 
-                <div class="form-group">
-                    <label class="text-black-50" for="firmname">Firm Name <span class="text-danger">*</span></label>
-                    <div class="input-group">
-                        <div class="input-group-prepend">
-                            <div class="input-group-text">
-                                <i class="fas fa-building"></i>
-                            </div>
-                        </div>
-                        <input type="text" name="firmname" class="form-control after-parent" id="firmname"
-                            placeholder="Enter Firm Name..." required>
-                    </div>
-                </div>
+        <div class="backdrop" id="backdrop"></div>
 
-                <div class="form-group">
-                    <label class="text-black-50" for="business_name">Business Name <span
-                            class="text-danger">*</span></label>
-                    <div class="input-group">
-                        <div class="input-group-prepend">
-                            <div class="input-group-text">
-                                <i class="fas fa-industry"></i>
-                            </div>
-                        </div>
-                        <input type="text" name="business_name" class="form-control after-parent" id="business_name"
-                            placeholder="Enter Business Name..." required>
-                    </div>
-                </div>
+        <script>
+            const openBtn = document.getElementById('openOffcanvas');
+            const closeBtn = document.getElementById('closeOffcanvas');
+            const offcanvas = document.getElementById('myOffcanvas');
+            const backdrop = document.getElementById('backdrop');
 
-                <div class="form-group">
-                    <label class="text-black-50" for="username"> Username <span class="text-danger">*</span></label>
-                    <div class="input-group">
-                        <div class="input-group-prepend">
-                            <div class="input-group-text">
-                                <i class="fas fa-user-circle"></i>
-                            </div>
-                        </div>
-                        <input type="text" name="username" class="form-control after-parent" id="username"
-                            placeholder="Generate User Name..." required readonly>
-                        <div class="input-group-append">
-                            <label class="input-group-text" style="cursor: pointer" title="Generate Username">
-                                <i class="fas fa-republican" id="generate-username" title="Generate Username"></i>
-                            </label>
-                        </div>
-                    </div>
-                </div>
+            openBtn && openBtn.addEventListener('click', () => {
+                if ($('[name="_method"]', offcanvas.querySelector('form')).length) {
+                    $('[name="_method"]', offcanvas.querySelector('form')).remove();
+                }
+                offcanvas.querySelector('form').action = openBtn.dataset.href;
+                offcanvas.querySelector('form').reset();
+                offcanvas.querySelector('.offcanvas-header h4').textContent = "Add New Partner";
+                offcanvas.classList.add('show');
+                backdrop.classList.add('show');
+                paymentGateway.$ele.setValue([]);
+                paymentGateway.$ele.enable();
+            });
 
-                <div class="form-group">
-                    <label class="text-black-50" for="email">Email <span class="text-danger">*</span></label>
-                    <div class="input-group">
-                        <div class="input-group-prepend">
-                            <div class="input-group-text">
-                                <i class="fas fa-envelope"></i>
-                            </div>
-                        </div>
-                        <input type="email" name="email" class="form-control after-parent" id="email"
-                            placeholder="Enter Email..." required>
-                    </div>
-                </div>
+            closeBtn && closeBtn.addEventListener('click', () => {
+                offcanvas.classList.remove('show');
+                backdrop.classList.remove('show');
+            });
 
-                <div class="form-group">
-                    <label class="text-black-50" for="phone">Phone <span class="text-danger">*</span></label>
-                    <div class="input-group">
-                        <div class="input-group-prepend">
-                            <div class="input-group-text">
-                                <i class="fas fa-phone-alt"></i>
-                            </div>
-                        </div>
-                        <input type="number" name="phone" maxlength="10" class="form-control after-parent num"
-                            id="phone" placeholder="0123456789" required>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="text-black-50" for="status">Select Status <span class="text-danger">*</span></label>
-                    <div class="input-group">
-                        <div class="input-group-prepend">
-                            <div class="input-group-text">
-                                <i class="fas fa-clock"></i>
-                            </div>
-                        </div>
-                        <select name="status" class="form-control after-parent" id="role"
-                            placeholder="Enter Status..." required>
-                            <option value="">Select Status...</option>
-                            <option value="0">In-active</option>
-                            <option value="1">Active</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="form-group mt-2">
-                    <button class="btn btn-danger" type="submit"><i class="fas fa-paper-plane"></i>
-                        &nbsp;Submit</button>
-                    <button class="btn btn-warning" type="reset"><i class="fas fa-redo"></i> &nbsp;Cancel</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div class="backdrop" id="backdrop"></div>
-    
-    <script>
-        const openBtn = document.getElementById('openOffcanvas');
-        const closeBtn = document.getElementById('closeOffcanvas');
-        const offcanvas = document.getElementById('myOffcanvas');
-        const backdrop = document.getElementById('backdrop');
-
-        openBtn && openBtn.addEventListener('click', () => {
-            if ($('[name="_method"]', offcanvas.querySelector('form')).length) {
-                $('[name="_method"]', offcanvas.querySelector('form')).remove();
-            }
-            offcanvas.querySelector('form').action = openBtn.dataset.href;
-            offcanvas.querySelector('form').reset();
-            offcanvas.querySelector('.offcanvas-header h4').textContent = "Add New Partner";
-            offcanvas.classList.add('show');
-            backdrop.classList.add('show');
-        });
-
-        closeBtn && closeBtn.addEventListener('click', () => {
-            offcanvas.classList.remove('show');
-            backdrop.classList.remove('show');
-        });
-
-        backdrop && backdrop.addEventListener('click', () => {
-            offcanvas.classList.remove('show');
-            backdrop.classList.remove('show');
-        });
-    </script>
+            backdrop && backdrop.addEventListener('click', () => {
+                offcanvas.classList.remove('show');
+                backdrop.classList.remove('show');
+            });
+        </script>
     @endcanany
 @endsection
 
@@ -267,8 +293,7 @@
     <script>
         // Data Table Config
         let tableData = {};
-        let cols = [
-            {
+        let cols = [{
                 data: "s_no"
             },
             {
@@ -289,21 +314,17 @@
             {
                 data: "phone"
             },
-            @if(auth()->user()->api_partner === 0)
-            {
-                data: "status"
-            },
-            {
-                data: "created_at"
-            },
-            {
-                data: "datetime"
-            },
-            {
-                data: "created_by.name"
-            },
-            @endif
-            {
+            @if (auth()->user()->api_partner === 0)
+                {
+                    data: "status"
+                }, {
+                    data: "created_at"
+                }, {
+                    data: "datetime"
+                }, {
+                    data: "created_by.name"
+                },
+            @endif {
                 data: 'api_credentials'
             },
             {
@@ -323,40 +344,36 @@
                 targets: 5,
                 render: function(e, t, a, s) {
                     tableData[a.id] = a;
-                    console.log(e, t, a, s);
+                    // console.log(e, t, a, s);
                     let $aHref = $('<a>').addClass('w-50').attr('title', a.email).attr("href", `mailto:${a.email}`)
                         .attr(
                             "data-bs-toggle", "tooltip").text(a.email.limitCharacter(15));
                     return $aHref[0].outerHTML;
                 }
             },
-            @if(auth()->user()->api_partner === 0)
-            {
-                targets: 7,
-                render: function(e, t, a, s) {
+            @if (auth()->user()->api_partner === 0)
+                {
+                    targets: 7,
+                    render: function(e, t, a, s) {
 
-                    return a.status ? 'Active' : 'In-active';
-                }
-            },
-            {
-                targets: 8,
-                render: function(e, t, a, s) {
+                        return a.status ? 'Active' : 'In-active';
+                    }
+                }, {
+                    targets: 8,
+                    render: function(e, t, a, s) {
 
-                    return a.created_at ? a.created_at.toConvertDatetime('d M, Y') : '-';
-                }
-            },
-            {
-                targets: 9,
-                orderable: !1,
-                searchable: !1,
-                render: function(e, t, a, s) {
+                        return a.created_at ? a.created_at.toConvertDatetime('d M, Y') : '-';
+                    }
+                }, {
+                    targets: 9,
+                    orderable: !1,
+                    searchable: !1,
+                    render: function(e, t, a, s) {
 
-                    return a.created_at ? a.created_at.toConvertDatetime('d M, Y') : '-';
-                }
-            },
-           
-            @endif
-            {
+                        return a.created_at ? a.created_at.toConvertDatetime('d M, Y') : '-';
+                    }
+                },
+            @endif {
                 targets: -2,
                 orderable: !1,
                 searchable: !1,
@@ -368,7 +385,8 @@
                                     `<a href="javascript:;" data-bs-toggle="tooltip" title="Credentials" data-credentials data-id="{{ auth()->user()->id }}" data-type="view">`
                                 )
                                 .attr("type", "button")
-                                .append('<i class="bg-gray-400 border fas fa-redo rounded-circle p-2"></i>')[0].outerHTML;
+                                .append('<i class="bg-gray-400 border fas fa-redo rounded-circle p-2"></i>')[0]
+                                .outerHTML;
                         } else {
                             html = $('<a data-bs-toggle="tooltip">').attr('href', 'javascript:;').attr('title',
                                 'First Time Key Genration Pending form vendor side.').prepend($('<i>').addClass(
@@ -377,23 +395,35 @@
                     @else
                         if (a?.api_credentials && a.api_credentials.ipaddress) {
                             html = $(
-                                    `<a href="javascript:;" data-bs-toggle="tooltip" title="Regenerate Credentials"  data-credentials data-id="${a.id}" data-type="view">`)
+                                    `<a href="javascript:;" data-bs-toggle="tooltip" title="Regenerate Credentials"  data-credentials data-id="${a.id}" data-type="view">`
+                                    )
                                 .attr("type", "button")
-                                .append('<i class="fas fa-redo bg-gray-400 border rounded-circle p-2"></i>')[0].outerHTML;
+                                .append('<i class="fas fa-redo bg-gray-400 border rounded-circle p-2"></i>')[0]
+                                .outerHTML;
+
+                            html = html + $(
+                                `<a href="javascript:;" data-send-notification class="ml-2" data-bs-toggle="tooltip" title="Whitelist Ip Address" data-id="${a.id}">`
+                                )
+                            .attr("type", "button")
+                            .append('<i class="fas fa-list bg-gray-400 border rounded-circle p-2"></i>')[0]
+                            .outerHTML;
                         } else if (a?.api_credentials && !a.api_credentials.ipaddress) {
                             html = $(
-                                    `<a href="javascript:;" data-send-notification data-bs-toggle="tooltip" title="Whitelist Ip Pending" data-id="${a.id}">`)
+                                    `<a href="javascript:;" data-send-notification data-bs-toggle="tooltip" title="Whitelist Ip Pending" data-id="${a.id}">`
+                                    )
                                 .attr("type", "button")
-                                .append('<i class="fas fa-redo bg-gray-400 border rounded-circle p-2"></i>')[0].outerHTML;
+                                .append('<i class="fas fa-redo bg-gray-400 border rounded-circle p-2"></i>')[0]
+                                .outerHTML;
                         } else {
                             html = $(
                                     `<a href="javascript:;" data-bs-toggle="tooltip" title="Generate Credentials"  data-credentials data-id="${a.id}" data-type="generate">`
                                 )
                                 .attr("type", "button")
-                                .append('<i class="fas fa-key bg-gray-400 border rounded-circle p-2"></i>')[0].outerHTML;
+                                .append('<i class="fas fa-key bg-gray-400 border rounded-circle p-2"></i>')[0]
+                                .outerHTML;
                         }
-                        @can("api-partner-config")
-                        html =  html  +  `<a class="ml-1" data-bs-toggle="tooltip" title="Set Configuration of Api Partner ${a.firmname}" href="${window.baseUrl}api-partner/set-config/${a.id}">
+                        @can('api-partner-config')
+                            html = html + `<a class="ml-1" data-bs-toggle="tooltip" title="Set Configuration of Api Partner ${a.firmname}" href="${window.baseUrl}api-partner/set-config/${a.id}">
                                             <i class="bg-gray-400 border fa-wrench fas p-2 rounded-circle" ></i>
                                         </a>`;
                         @endcan
@@ -442,10 +472,11 @@
             processing: true,
             serverSide: true,
             initComplete: function() {
-                $('[data-bs-toggle="tooltip"]').tooltip();
+                $('[data-bs-toggle="tooltip"]',document).tooltip();
             }
         }
     </script>
+    <script src="{{ asset('assets/js/virtual-select.min.js') }}"></script>
     <script src="{{ asset('assets/vendor/datatables/jquery.dataTables.min.js') }}"></script>
     <script src="{{ asset('assets/vendor/datatables/dataTables.bootstrap4.min.js') }}"></script>
     <script src="{{ asset('assets/js/jquery.validate.min.js') }}"></script>
@@ -454,7 +485,7 @@
     <script src="{{ asset('assets/js/demo/datatables-demo.js') }}"></script>
     <script src="{{ asset('assets/js/api-partner.js') }}"></script>
     <script>
-        let selectedPartner;
+        let selectedPartner, paymentGateway, options = {!! json_encode($pgCompanies) !!};
         $(document).ready(function() {
             // Form Validation
             $('form[validate]').validate({
@@ -502,6 +533,15 @@
                 });
             @endcan
 
+            //initialize VirtualSelect to group_name
+            paymentGateway = VirtualSelect.init({
+                ele: '#payment_gateway',
+                //required: true,
+                multiple: true
+                // allowNewOption: true
+            });
+            options.length && paymentGateway.$ele.setOptions(options);
+
         });
     </script>
     @can('api-partner-update')
@@ -520,6 +560,9 @@
                     $(form).append($put);
                 }
                 [...form.querySelectorAll('[name]')].forEach(input => input.value = tableData[id][input.name]);
+                console.log(tableData[id].api_config.map(ele => String(ele.pg_company_id)).filter((item, index, self) => self.indexOf(item) === index));
+                paymentGateway.$ele.setValue(String(tableData[id].api_config.map(ele => String(ele.pg_company_id)).filter((item, index, self) => self.indexOf(item) === index)));
+                paymentGateway.$ele.disable();
             }
         </script>
     @endcan

@@ -16,13 +16,13 @@ class PgReceiptController extends Controller
         $data = [];
         try {
 
-           
-            $resData = str_replace(" ", "+", base64_decode($request?->resdata));
-
+            $resData = base64_decode($request?->resdata);
+            
             parse_str(str_replace('"', "", UserService::decrypt($resData)), $data);
-            dd($data);
-            $txn = Pgtxn::where(["txnno" => $data["id"] ?? "false111", "status" => 1])->first();
 
+            $txn = Pgtxn::where(["txnno" => $data["id"] ?? "false111", "status" => 1])->first();
+           
+            
             if (!$txn)
                 throw new \Exception( $data["msg"] ?? $data["message"] ?? 'Something Went Worng!', 422);
 
@@ -39,17 +39,20 @@ class PgReceiptController extends Controller
                 $userIv
             );
 
-            $txn->update(['status' => 3]);
+            $txn->update(['status' => 3,"encresponse" => $data['encResponse']]);
+
+            $txn->tQuery->update(['client_response' => $data]);
 
             return view('payment-gateway.gateway-pg-receipt', $data);
 
         } catch (\Exception $e) {
 
-            if (isset($data["id"]) && !empty($data["id"])) {
-                $txn = Pgtxn::where(["txnno" => $data["id"], "status" => 0])->first();
+            if ((isset($data["id"]) && !empty($data["id"])) ||  (isset($data["txnno"]) && !empty($data["txnno"]))) {
+                $txn = Pgtxn::where(["txnno" => $data["id"] ?? $data["txnno"], "status" => 0])->first();
+                //dd($txn);
                 if ($txn) {
                     $encData = $txn?->encdata;
-                    $txn->update(['errormsg' => $e->getMessage()]);
+                    
                     $decrptdata = json_decode(UserService::decrypt($encData), true);
                     $data['returnUrl'] = $decrptdata["redirect_url"];
                     $userKey = $txn->user?->apiCredentials?->key;
@@ -59,6 +62,8 @@ class PgReceiptController extends Controller
                         $userKey,
                         $userIv
                     );
+                    $txn->update(['errormsg' => $e->getMessage(),"encresponse" => $data['encResponse']]);
+                    $txn->tQuery->update(['client_response' => $data]);
                 }
             }
             
@@ -80,7 +85,7 @@ class PgReceiptController extends Controller
 
             $tempUrl = URL::temporarySignedRoute(
                 'download.receipt',
-                now()->addMinutes(10),
+                now("Asia/Kolkata")->addMinutes(10),
                 ['filename' => $fileName]
             );
 

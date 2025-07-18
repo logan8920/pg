@@ -20,7 +20,8 @@ class UserController extends Controller
      */
     public function index()
     {
-        $roles = Role::all();
+        // Role id : 2 refer to api partner
+        $roles = Role::whereNotIn('id',[2])->get();
         $datatableUrl = route("user.show.ajax");
         return view('user-management.user.list', compact('datatableUrl', 'roles'));
     }
@@ -38,10 +39,13 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
+        $allRole = Role::whereNotIn('id',[2])->get()->pluck('id')->toArray();
+        $request->role = explode(',',$request->role);
+        
         $validator = Validator::make(
             $request->all(),
             [
-                'role' => ['required'],
+                'role.*' => ['required|numeric|in:'.implode(',',$allRole)],
                 'name' => ['required', 'string', 'max:255'],
                 'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:' . User::class],
                 'password' => ['required', 'confirmed', Rules\Password::defaults()],
@@ -62,7 +66,7 @@ class UserController extends Controller
                 'password' => Hash::make($request->password),
             ]);
 
-            $roles = Role::whereIn('name', [$request->role])->get();
+            $roles = Role::whereIn('id', $request->role)->get();
 
             $user->assignRole($roles);
 
@@ -92,7 +96,8 @@ class UserController extends Controller
         $search = $request->post('search')['value'] ?? null;
 
         $query = User::selectRaw('(@rownum := @rownum + 1) AS s_no, users.id, users.name, users.email, users.created_at')
-            ->crossJoin(DB::raw('(SELECT @rownum := 0) r'))->with('roles');
+            ->where('users.api_partner', 0)
+            ->crossJoin(DB::raw('(SELECT @rownum := 0) r'))->with('roles:id,name');
 
         // Search filter
         if ($search) {
@@ -185,7 +190,7 @@ class UserController extends Controller
         }
 
         $postData = $request->except('role', 'password', 'password_confirmation');
-        $postData['updated_at'] = now();
+        $postData['updated_at'] = now("Asia/Kolkata");
 
         if ($request->filled('password')) {
             $postData['password'] = bcrypt($request->password);

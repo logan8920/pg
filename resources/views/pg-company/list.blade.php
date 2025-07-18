@@ -253,13 +253,18 @@
 
                     return `<div style="white-space: nowrap;" class="main-edit-btn text-center">
                                 @can('pg-company-update')
-                                 <a href="/pg-company/${a.id}" data-bs-toggle="tooltip" onclick="openEditModal(${a.id},this,event)" title="edit">
+                                 <a href="/pg-company/${a.id}" data-bs-toggle="tooltip" onclick="openEditModal(${a.id},this,event)" title="Edit ${a.name}">
                                     <i class="fas fa-edit btn btn-primary btn-sm"></i>
                                 </a>
                                 @endcan
                                 @can('pg-company-destroy')
-                                <a href="/pg-company/${a.id}/destroy" data-bs-toggle="tooltip" data-id="${a.id}" onclick="deleteConfirmation(this,event)" title="Delete">
+                                <a href="/pg-company/${a.id}/destroy" data-bs-toggle="tooltip" data-id="${a.id}" onclick="deleteConfirmation(this,event)" title="Delete ${a.name}">
                                     <i class="fas fa-trash-alt btn btn-danger btn-sm"></i>
+                                </a>
+                                @endcan
+                                @can('pg-company-default-config')
+                                <a href="/pg-company/${a.id}/default-config" data-bs-toggle="tooltip" data-id="${a.id}" title="Set Default Configuration of ${a.name}" class="btn btn-success btn-sm">
+                                    <i class="fas fa-tools"></i>
                                 </a>
                                 @endcan
                            </div>`;

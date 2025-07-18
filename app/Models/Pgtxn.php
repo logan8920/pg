@@ -10,6 +10,8 @@ class Pgtxn extends Model
 {
     protected $table = 'pgtxns';
 
+    private CONST TXNNO = 20250000;
+
     protected $fillable = [
         'user_id',
         'txnid',
@@ -35,13 +37,15 @@ class Pgtxn extends Model
         'processby',
         'ipaddress',
         'remarks',
+        'errormsg',
         'refund_remarks',
         'utr',
         'order_id',
         'card',
         'sub_type',
         'name',
-        'encdata'
+        'encdata',
+        'encresponse'
     ];
 
     public function initiate(array $data)
@@ -74,7 +78,7 @@ class Pgtxn extends Model
     {
         do {
             // You can use a format like: TXN-<DATE>-<RANDOM>-<ID>
-            $txnid = 'TXN-' . now()->format('YmdHis') . '-' . mt_rand(1000, 9999) . ($id ? "-$id" : '');
+            $txnid = 'TXN-' . (self::TXNNO + $id);
 
             // Check if this txnid already exists
             $exists = $this->where('txnid', $txnid)->exists();
@@ -97,6 +101,10 @@ class Pgtxn extends Model
 
     public function user() {
         return $this->hasOne(User::class, 'id' , 'user_id');
+    }
+
+    public function tQuery() {
+        return $this->hasOne(Query::class, 'pgtxn_id', 'id');
     }
 
 }

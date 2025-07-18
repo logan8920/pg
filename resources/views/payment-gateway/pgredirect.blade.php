@@ -60,7 +60,7 @@
         integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
     @if(isset($formFields))
     <script type="text/javascript">
-        //$("#paymentForm").submit();
+        $("#paymentForm").submit();
     </script>
     @endif
 

@@ -14,4 +14,8 @@ Route::middleware(['XSS','auth'])->prefix('pg-company')->group(function () {
     Route::put('/{pgCompany}',[PgCompanyController::class, 'update'])->name('pg-company.update')->middleware('can:pg-company-update');
     Route::get('/{pgCompany}/destroy',[PgCompanyController::class, 'destroy'])->name('pg-company.destroy')->middleware('can:pg-company-destroy');
     Route::get('/{pgCompany}/edit',[PgCompanyController::class, 'edit'])->name('pg-company.edit')->middleware('can:pg-company-edit');
+
+    Route::get('/{pgCompany}/default-config',[PgCompanyController::class, 'defaultConfig'])->name('pg-company.default.config')->middleware('can:pg-company-default-config');
+
+    Route::post('/{pgCompany}/default-config',[PgCompanyController::class, 'defaultConfigUpdate'])->name('pg-company.default.config.post')->middleware('can:pg-company-default-config');
 });
